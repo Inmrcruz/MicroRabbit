@@ -10,6 +10,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
+using MicroRabbit.Infra.IoC;
+using MicroRabbit.Banking.Data.Context;
+using Microsoft.EntityFrameworkCore;
 
 namespace MicroRabbit.Banking.Api
 {
@@ -25,11 +29,20 @@ namespace MicroRabbit.Banking.Api
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_2);
+            services.AddDbContext<BankingDbContext>(options =>
+            {
+                options.UseSqlServer(Configuration.GetConnectionString("BankingDbConnection"));
+            });
+            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_3_0);
+            RegisterServices(services);
         }
 
+        private void RegisterServices(IServiceCollection services)
+            => DependencyContainer.RegisterServices(services);
+
+
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
             {
@@ -40,9 +53,13 @@ namespace MicroRabbit.Banking.Api
                 // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
             }
-
+            app.UseRouting();
             app.UseHttpsRedirection();
-            app.UseMvc();
+            app.UseAuthorization();
+            app.UseEndpoints(enpoints =>
+            {
+                enpoints.MapControllers();
+            });
         }
     }
 }
