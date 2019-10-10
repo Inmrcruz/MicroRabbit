@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.0</TargetFramework>
@@ -9,8 +9,6 @@
     <Folder Include="Commands\" />
     <Folder Include="EventHandlers\" />
     <Folder Include="Events\" />
-    <Folder Include="Interfaces\" />
-    <Folder Include="Models\" />
   </ItemGroup>
 
 </Project>
