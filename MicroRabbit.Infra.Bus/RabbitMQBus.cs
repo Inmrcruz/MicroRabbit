@@ -2,6 +2,7 @@
 using MicroRabbit.Domain.Core.Bus;
 using MicroRabbit.Domain.Core.Commands;
 using MicroRabbit.Domain.Core.Events;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -18,17 +19,19 @@ namespace MicroRabbit.Infra.Bus
         private readonly IMediator _mediator;
         private readonly Dictionary<string, List<Type>> _handlers;
         private readonly List<Type> _eventTypes;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
 
-        public RabbitMQBus(IMediator mediator)
+        public RabbitMQBus(IMediator mediator, IServiceScopeFactory serviceScopeFactory)
         {
             _mediator = mediator;
             _handlers = new Dictionary<string, List<Type>>();
             _eventTypes = new List<Type>();
+            _serviceScopeFactory = serviceScopeFactory;
         }
 
         public Task SendCommand<T>(T command) where T : Command
             => _mediator.Send(command);
-        
+
 
         public void Publish<T>(T @event) where T : Event
         {
@@ -38,14 +41,14 @@ namespace MicroRabbit.Infra.Bus
             using (var channel = connection.CreateModel())
             {
                 var eventName = @event.GetType().Name;
-                channel.QueueDeclare(eventName,false,false,false,null);
+                channel.QueueDeclare(eventName, false, false, false, null);
 
                 var message = JsonConvert.SerializeObject(@event);
                 var body = Encoding.UTF8.GetBytes(message);
 
                 channel.BasicPublish("", eventName, null, body);
             }
-            
+
         }
 
         public void Subscribe<T, TH>()
@@ -57,7 +60,7 @@ namespace MicroRabbit.Infra.Bus
 
             if (!_eventTypes.Contains(typeof(T)))
                 _eventTypes.Add(typeof(T));
-            
+
 
             if (!_handlers.ContainsKey(eventName))
                 _handlers.Add(eventName, new List<Type>());
@@ -76,7 +79,7 @@ namespace MicroRabbit.Infra.Bus
 
         private void StartBasicConsume<T>() where T : Event
         {
-            var factory = new ConnectionFactory() { HostName = "localhost",DispatchConsumersAsync = true };
+            var factory = new ConnectionFactory() { HostName = "localhost", DispatchConsumersAsync = true };
 
             var connection = factory.CreateConnection();
             var channel = connection.CreateModel();
@@ -100,10 +103,10 @@ namespace MicroRabbit.Infra.Bus
             {
                 await ProccessEvent(eventName, message).ConfigureAwait(false);
             }
-            catch (Exception )
+            catch (Exception)
             {
 
-                
+
             }
         }
 
@@ -111,17 +114,21 @@ namespace MicroRabbit.Infra.Bus
         {
             if (_handlers.ContainsKey(eventName))
             {
-                var subscriptions = _handlers[eventName];
-                foreach (var subscription in subscriptions)
+                using (var scope = _serviceScopeFactory.CreateScope())
                 {
-                    var handler = Activator.CreateInstance(subscription);
-                    if (handler == null) continue;
-                    var eventType = _eventTypes.SingleOrDefault(t => t.Name == eventName);
-                    var @event = JsonConvert.DeserializeObject(message, eventType);
-                    var concreteType = typeof(IEventHandler<>).MakeGenericType(eventType);
+                    var subscriptions = _handlers[eventName];
+                    foreach (var subscription in subscriptions)
+                    {
+                        var handler = scope.ServiceProvider.GetService(subscription);
+                        if (handler == null) continue;
+                        var eventType = _eventTypes.SingleOrDefault(t => t.Name == eventName);
+                        var @event = JsonConvert.DeserializeObject(message, eventType);
+                        var concreteType = typeof(IEventHandler<>).MakeGenericType(eventType);
 
-                    await (Task)concreteType.GetMethod("Handle").Invoke(handler, new object[] { @event });
+                        await (Task)concreteType.GetMethod("Handle").Invoke(handler, new object[] { @event });
+                    }
                 }
+
             }
         }
     }
